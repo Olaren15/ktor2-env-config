@@ -42,7 +42,7 @@ object EnvConfig {
 
             logger.info("use environment: $environment")
 
-            handleExtraConfigFile()
+            setExternalConfig()
         }
 
     /**
@@ -50,8 +50,12 @@ object EnvConfig {
      *
      * @return the default property for provided key or null if it doesn't exist
      */
-    fun getBoolean(propertyKey: String): Boolean? =
-        getBooleanInternal(environment, propertyKey) ?: getBooleanInternal(DEFAULT_ENVIRONMENT, propertyKey)
+    fun getBoolean(propertyKey: String): Boolean? {
+        var value: Boolean? = getBooleanExternal(propertyKey)
+
+        return value ?:
+               getBooleanInternal(environment, propertyKey) ?: getBooleanInternal(DEFAULT_ENVIRONMENT, propertyKey)
+    }
 
     /**
      * Gets int property from config with default fallback
@@ -59,11 +63,10 @@ object EnvConfig {
      * @return the int property for provided key or null if it doesn't exist
      */
     fun getInt(propertyKey: String): Int? {
-        var value: Int? = gerPropertyExternal(environment, propertyKey) as Int
+        var value: Int? = getIntExternal(propertyKey)
 
-        println("external value ${value}")
-
-        return value ?: (getIntInternal(environment, propertyKey) ?: getIntInternal(DEFAULT_ENVIRONMENT, propertyKey))
+        return value ?:
+               (getIntInternal(environment, propertyKey) ?: getIntInternal(DEFAULT_ENVIRONMENT, propertyKey))
     }
 
     /**
@@ -71,16 +74,24 @@ object EnvConfig {
      *
      * @return the list property for provided key or null if it doesn't exist
      */
-    fun getList(propertyKey: String): List<String>? =
-        getListInternal(environment, propertyKey) ?: getListInternal(DEFAULT_ENVIRONMENT, propertyKey)
+    fun getList(propertyKey: String): List<String>? {
+        var value: List<String>? = getListExternal(propertyKey)
+
+        return value ?:
+               getListInternal(environment, propertyKey) ?: getListInternal(DEFAULT_ENVIRONMENT, propertyKey)
+    }
 
     /**
      * Gets string property from config with default fallback
      *
      * @return the string property for provided key or null if it doesn't exist
      */
-    fun getString(propertyKey: String): String? =
-        getStringInternal(environment, propertyKey) ?: getStringInternal(DEFAULT_ENVIRONMENT, propertyKey)
+    fun getString(propertyKey: String): String? {
+        var value: String? = getStringExternal(propertyKey)
+
+        return value ?:
+               getStringInternal(environment, propertyKey) ?: getStringInternal(DEFAULT_ENVIRONMENT, propertyKey)
+    }
 
     /**
      * Gets boolean property from config with default fallback
@@ -126,8 +137,60 @@ object EnvConfig {
     private fun getStringInternal(environment: String, propertyKey: String): String? =
         getPropertyInternal(environment, propertyKey)?.getString()
 
+    private fun getBooleanExternal(valuePath: String): Boolean? {
+        // do we have an external config?
+        if (::externalConfig.isInitialized) {
+            try {
+                return externalConfig.getBoolean(valuePath)
+            }
+            catch (e: ConfigException){
+                logger.warn(e.message)
+            }
+        }
+        return null
+    }
+
+    private fun getIntExternal(valuePath: String): Int? {
+        // do we have an external config?
+        if (::externalConfig.isInitialized) {
+            try {
+                return externalConfig.getInt(valuePath)
+            }
+            catch (e: ConfigException){
+                logger.warn(e.message)
+            }
+        }
+        return null
+    }
+
+    private fun getListExternal(valuePath: String): List<String>? {
+        // do we have an external config?
+        if (::externalConfig.isInitialized) {
+            try {
+                return externalConfig.getStringList(valuePath)
+            }
+            catch (e: ConfigException){
+                logger.warn(e.message)
+            }
+        }
+        return null
+    }
+
+    private fun getStringExternal(valuePath: String): String? {
+        // do we have an external config?
+        if (::externalConfig.isInitialized) {
+            try {
+                return externalConfig.getString(valuePath)
+            }
+            catch (e: ConfigException){
+                logger.warn(e.message)
+            }
+        }
+        return null
+    }
+
     /**
-     * Get property from config for specified environment
+     * Get property from a application.conf config file, for specified environment
      *
      * @return the application config value for the provided environment and key - or null if key is not found
      * @throws Exception if EnvConfig is not initialized yet
@@ -145,42 +208,27 @@ object EnvConfig {
         return config.propertyOrNull(path)
     }
 
-    private fun gerPropertyExternal(environment: String, propertyKey: String): Any? {
-        // do we have a config?
-        if (!::externalConfig.isInitialized) {
-            logger.warn("externalConfig not initialized yet")
-
-            //throw Exception("Not initialized yet")
-        }
-
-        val path = "${ROOT_NODE}.${environment}.$propertyKey"
-
-        try {
-            return externalConfig?.getAnyRef(path)
-        } catch (e: ConfigException.Missing) {
-            logger.warn("required data is was not found")
-        }
-        return null
-    }
-
-    private fun handleExtraConfigFile() {
+    /**
+     * used to create a config object from  an external .conf file,
+     * provided via System environment values
+     */
+    private fun setExternalConfig() {
         try {
             val externalConfigFilePath = System.getenv(EC_CONFIGFILE)
-            val configFile: File = File("/u/adrian/test.conf")
+            val configFile = File("", externalConfigFilePath)
 
-            logger.info("externalConfigFilePath is $externalConfigFilePath, configFile is $configFile acess ${configFile.exists()}")
             if (configFile.exists() && configFile.canRead()) {
                 externalConfig = ConfigFactory.parseFile(configFile)
 
-                logger.info(externalConfig?.toString())
+                logger.info("external config available")
             }
         } catch (e: NullPointerException) {
             logger.warn("no external config file provided")
         } catch (e: SecurityException) {
             logger.warn("access denied for the external config file's env. variable")
-        }
-        catch (e : Exception){
-            logger.warn(e.message)
+        } catch (e: Exception) {
+            logger.warn("handleExtraConfigFile() exception: ${e.message}")
         }
     }
 }
+
